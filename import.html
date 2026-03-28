@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelTrack | Advanced Threat Topology</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap');
+        body { background-color: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .glass-panel { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(51, 65, 85, 0.7); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5); }
+        #network-map { height: 650px; border-radius: 0.75rem; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); outline: none; }
+        .vis-network:focus { outline: none; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <header class="glass-panel z-10 sticky top-0 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-800 rounded-xl shadow-lg shadow-blue-900/50 flex items-center justify-center text-xl">🛡️</div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white leading-tight">IntelTrack <span class="text-blue-500 font-light">Pro</span></h1>
+                <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">Anantapur Police Cyber Division</p>
+            </div>
+        </div>
+
+        <div class="flex w-full md:w-auto gap-2 relative">
+            <input type="text" id="search-input" placeholder="Search UPI, Acc No, or Phone..." 
+                   class="w-full md:w-80 bg-slate-900/80 border border-slate-700 text-sm text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 transition-colors font-mono">
+            <button onclick="searchNode()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-all shadow-lg shadow-blue-900/30">
+                Locate
+            </button>
+            <div id="search-error" class="hidden absolute top-12 left-0 bg-red-900/90 text-red-200 text-xs px-3 py-1 rounded border border-red-500">Node not found in current dataset.</div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col xl:flex-row gap-6 p-6 overflow-hidden">
+        
+        <aside class="w-full xl:w-96 flex flex-col gap-6 overflow-y-auto pr-2 pb-20 xl:pb-0">
+            
+            <div class="glass-panel p-5 rounded-xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Data Ingestion</h2>
+                    <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded">AI READY</span>
+                </div>
+                <button onclick="generateLargeDataset()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg border border-slate-600 transition-all mb-3 flex justify-center items-center gap-2">
+                    <span>⚡</span> Simulate Large Network (100+ Nodes)
+                </button>
+                <div class="relative w-full h-2 bg-slate-800 rounded-full overflow-hidden hidden" id="loading-bar">
+                    <div class="absolute top-0 left-0 h-full bg-blue-500 w-1/3 animate-pulse"></div>
+                </div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-xl grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Total Volume</p>
+                    <p id="stat-volume" class="text-xl font-bold text-white font-mono">₹ 0</p>
+                </div>
+                <div>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Mule Accounts</p>
+                    <p id="stat-mules" class="text-xl font-bold text-blue-400 font-mono">0</p>
+                </div>
+                <div class="col-span-2 border-t border-slate-700 pt-3 mt-1">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1 flex justify-between">
+                        <span>Master Hubs (Gatherers)</span>
+                        <span class="text-red-500 animate-pulse">CRITICAL</span>
+                    </p>
+                    <p id="stat-hubs" class="text-2xl font-bold text-red-500 font-mono">0</p>
+                </div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-xl border-l-4 border-slate-600 transition-colors duration-300" id="action-container">
+                <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">Target Inspector</h2>
+                <div id="no-target" class="text-xs text-slate-500 italic text-center py-6">Select a node on the map to inspect.</div>
+                
+                <div id="target-details" class="hidden space-y-4">
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+                        <p class="text-[10px] text-slate-400 uppercase mb-1">Selected Entity</p>
+                        <p id="selected-id" class="font-mono text-sm text-white truncate"></p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-slate-800 p-2 rounded"><span class="text-slate-400 block mb-1">Inbound Txns</span><span id="sel-in" class="font-bold text-white">0</span></div>
+                        <div class="bg-slate-800 p-2 rounded"><span class="text-slate-400 block mb-1">Outbound Txns</span><span id="sel-out" class="font-bold text-white">0</span></div>
+                    </div>
+
+                    <button onclick="triggerFreeze()" class="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-red-900/30 uppercase tracking-widest mt-2">
+                        Draft 106 BNSS Notice
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <section class="flex-1 flex flex-col gap-6">
+            <div class="glass-panel p-2 rounded-xl relative shadow-2xl">
+                <div class="absolute top-6 left-6 z-10 bg-slate-900/80 backdrop-blur border border-slate-700 p-3 rounded-lg text-xs space-y-2 pointer-events-none">
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div><span class="text-slate-300">Victim Source</span></div>
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div><span class="text-slate-300">Layering (Mule)</span></div>
+                    <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-sm bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.9)]"></div><span class="text-slate-300 font-bold">Master Hub</span></div>
+                </div>
+                
+                <div id="network-map"></div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let network = null;
+        let nodesDataset = null;
+        let edgesDataset = null;
+
+        // Simulate a larger dataset to prove data handling
+        function generateLargeDataset() {
+            document.getElementById('loading-bar').classList.remove('hidden');
+            
+            setTimeout(() => {
+                const txns = [];
+                const numVictims = 25;
+                const numLayer1 = 10;
+                const numLayer2 = 5;
+                const numHubs = 2;
+
+                // Victims to Layer 1 (Scatter)
+                for(let i=1; i<=numVictims; i++) {
+                    const amount = Math.floor(Math.random() * 90000) + 10000;
+                    const targetMule = `MULE_L1_${Math.floor(Math.random() * numLayer1) + 1}`;
+                    txns.push({ source: `VIC_AP_${9000+i}`, target: targetMule, amount: amount });
+                }
+
+                // Layer 1 to Layer 2 (Layering)
+                for(let i=1; i<=numLayer1; i++) {
+                    for(let j=0; j<2; j++) {
+                        const targetMule = `MULE_L2_${Math.floor(Math.random() * numLayer2) + 1}`;
+                        txns.push({ source: `MULE_L1_${i}`, target: targetMule, amount: 45000 });
+                    }
+                }
+
+                // Layer 2 to Hubs (Gathering)
+                for(let i=1; i<=numLayer2; i++) {
+                    const targetHub = `HUB_BENEFICIARY_${Math.floor(Math.random() * numHubs) + 1}`;
+                    txns.push({ source: `MULE_L2_${i}`, target: targetHub, amount: 80000 });
+                }
+
+                processData(txns);
+                document.getElementById('loading-bar').classList.add('hidden');
+            }, 600); // Fake processing delay for UX
+        }
+
+        function processData(txns) {
+            const nodeMap = new Map();
+            const edges = [];
+            let totalVolume = 0;
+            let hubCount = 0;
+            let muleCount = 0;
+
+            txns.forEach(t => {
+                totalVolume += t.amount;
+                if(!nodeMap.has(t.source)) nodeMap.set(t.source, {id: t.source, in: 0, out: 0});
+                if(!nodeMap.has(t.target)) nodeMap.set(t.target, {id: t.target, in: 0, out: 0});
+                nodeMap.get(t.source).out++;
+                nodeMap.get(t.target).in++;
+
+                edges.push({
+                    from: t.source, to: t.target, 
+                    label: "₹" + (t.amount/1000).toFixed(1) + "k", 
+                    font: { size: 9, color: '#64748b', strokeWidth: 0 }, 
+                    arrows: { to: { scaleFactor: 0.5 } }, 
+                    color: { color: '#334155', highlight: '#3b82f6', hover: '#3b82f6', opacity: 0.5 },
+                    smooth: { type: 'continuous' }
+                });
+            });
+
+            const nodes = Array.from(nodeMap.values()).map(n => {
+                // Professional Styling based on Risk Scoring
+                let bgColor = "#10b981"; // Victim (Green)
+                let borderColor = "#059669";
+                let size = 12;
+                let shape = 'dot';
+                let shadowColor = 'rgba(16,185,129,0.4)';
+
+                if (n.in > 0 && n.out > 0) { 
+                    bgColor = "#3b82f6"; borderColor = "#2563eb"; size = 18; muleCount++; shadowColor = 'rgba(59,130,246,0.4)';
+                } // Mule
+                if (n.in >= 3 && n.out === 0) { 
+                    bgColor = "#ef4444"; borderColor = "#dc2626"; size = 30; shape = 'square'; hubCount++; shadowColor = 'rgba(239,68,68,0.7)';
+                } // Hub
+
+                return {
+                    id: n.id, 
+                    label: n.id, 
+                    shape: shape,
+                    size: size,
+                    color: { background: bgColor, border: borderColor, highlight: { background: '#fff', border: bgColor } },
+                    borderWidth: 2,
+                    shadow: { enabled: true, color: shadowColor, size: 10, x: 0, y: 0 },
+                    font: { color: '#e2e8f0', size: 10, face: 'Inter', strokeWidth: 2, strokeColor: '#020617' },
+                    _rawIn: n.in, _rawOut: n.out // Store for panel
+                };
+            });
+
+            // Update Stats
+            document.getElementById('stat-volume').innerText = "₹ " + (totalVolume / 100000).toFixed(2) + " L";
+            document.getElementById('stat-mules').innerText = muleCount;
+            document.getElementById('stat-hubs').innerText = hubCount;
+
+            renderGraph(nodes, edges);
+        }
+
+        function renderGraph(nodes, edges) {
+            const container = document.getElementById('network-map');
+            nodesDataset = new vis.DataSet(nodes);
+            edgesDataset = new vis.DataSet(edges);
+            
+            const data = { nodes: nodesDataset, edges: edgesDataset };
+            
+            // Professional Physics configuration for large datasets
+            const options = { 
+                physics: { 
+                    forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 100, springConstant: 0.08 },
+                    maxVelocity: 50,
+                    solver: 'forceAtlas2Based',
+                    timestep: 0.35,
+                    stabilization: { iterations: 150, updateInterval: 25, fit: true }
+                }, 
+                interaction: { hover: true, tooltipDelay: 200, hideEdgesOnDrag: true },
+                layout: { improvedLayout: false } // Speeds up initial render
+            };
+            
+            network = new vis.Network(container, data, options);
+            
+            // Stop physics after stabilization to save CPU on large graphs
+            network.on("stabilizationIterationsDone", function () {
+                network.setOptions( { physics: false } );
+            });
+
+            // Handle Clicks for Target Panel
+            network.on("click", (params) => {
+                const actionContainer = document.getElementById('action-container');
+                if(params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    const nodeData = nodesDataset.get(nodeId);
+                    
+                    document.getElementById('no-target').classList.add('hidden');
+                    document.getElementById('target-details').classList.remove('hidden');
+                    document.getElementById('selected-id').innerText = nodeData.id;
+                    document.getElementById('sel-in').innerText = nodeData._rawIn;
+                    document.getElementById('sel-out').innerText = nodeData._rawOut;
+
+                    // Highlight styling based on risk
+                    if(nodeData._rawIn >= 3 && nodeData._rawOut === 0) {
+                        actionContainer.className = "glass-panel p-5 rounded-xl border-l-4 border-red-500 transition-colors duration-300";
+                    } else {
+                        actionContainer.className = "glass-panel p-5 rounded-xl border-l-4 border-blue-500 transition-colors duration-300";
+                    }
+                } else {
+                    document.getElementById('no-target').classList.remove('hidden');
+                    document.getElementById('target-details').classList.add('hidden');
+                    actionContainer.className = "glass-panel p-5 rounded-xl border-l-4 border-slate-600 transition-colors duration-300";
+                }
+            });
+        }
+
+        // Search Engine Logic
+        function searchNode() {
+            if(!network || !nodesDataset) return;
+            
+            const query = document.getElementById('search-input').value.toUpperCase().trim();
+            const errorMsg = document.getElementById('search-error');
+            
+            if(query === "") return;
+
+            const targetNode = nodesDataset.get(query);
+            
+            if(targetNode) {
+                errorMsg.classList.add('hidden');
+                // Zoom and focus on the target
+                network.focus(query, {
+                    scale: 1.5,
+                    animation: { duration: 1000, easingFunction: "easeInOutQuad" }
+                });
+                // Select the node programmatically to trigger the panel
+                network.selectNodes([query]);
+                // Manually fire the click event logic
+                network.emit('click', { nodes: [query] });
+            } else {
+                errorMsg.classList.remove('hidden');
+                setTimeout(() => errorMsg.classList.add('hidden'), 3000);
+            }
+        }
+
+        function triggerFreeze() {
+            const target = document.getElementById('selected-id').innerText;
+            alert(`Drafting formal legal notice under Sec 106 BNSS to Nodal Officer regarding entity: ${target}`);
+        }
+    </script>
+</body>
+</html>
